@@ -43,7 +43,9 @@ export function formatContext(session: AgentSession): string {
     ? `unknown until the next model response / ${amount(usage.contextWindow)}`
     : `${amount(usage.tokens)} / ${amount(usage.contextWindow)} (${usage.percent?.toFixed(1)}%)`;
   return [
-    `Pi context: ${total}`,
+    `Pi context — session ${session.sessionId}`,
+    `Directory: ${session.sessionManager.getCwd()}`,
+    `Total: ${total}`,
     `System prompt: ~${amount(approximate(prompt))}`,
     `Project rules: ~${amount(rules)}`,
     `Skills (descriptions): ~${amount(skills)}`,
@@ -51,6 +53,8 @@ export function formatContext(session: AgentSession): string {
     `Extension tools: ~${amount(toolTokens(false))}`,
     `Compaction summary: ~${amount(summaries)} (${compactions} compaction${compactions === 1 ? "" : "s"} on this branch)`,
     `Conversation: ~${amount(conversation)}`,
+    ...(usage?.tokens === 0 && conversation === 0 && summaries === 0
+      ? ["This session has no active conversation yet. Use /sessions or /use ID to select an existing one."] : []),
     "Category counts are estimates and may not add up to Pi's total. Older summaries replaced by compaction are not counted again.",
   ].join("\n");
 }

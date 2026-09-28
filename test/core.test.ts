@@ -31,8 +31,10 @@ test("Telegram menu only advertises supported Pi commands", () => {
 
 test("context counts only active summaries but reports all compactions", () => {
   const session = {
+    sessionId: "test-session",
     getContextUsage: () => ({ tokens: 1000, contextWindow: 2000, percent: 50 }),
     sessionManager: {
+      getCwd: () => "/tmp/test-project",
       buildSessionProjection: () => ({ messages: [
         { role: "system", content: "abcd", sections: { skills: "skill", rules: "rule" } },
         { role: "compactionSummary", summary: "a".repeat(40) },
@@ -47,7 +49,9 @@ test("context counts only active summaries but reports all compactions", () => {
   const output = formatContext(session);
   assert.match(output, /Compaction summary: ~10 \(2 compactions on this branch\)/);
   assert.match(output, /Conversation: ~10/);
-  assert.match(output, /Pi context: 1.0k \/ 2.0k \(50.0%\)/);
+  assert.match(output, /Pi context — session test-session/);
+  assert.match(output, /Directory: \/tmp\/test-project/);
+  assert.match(output, /Total: 1.0k \/ 2.0k \(50.0%\)/);
 });
 
 test("formats short Telegram labels and splits Unicode safely", () => {
