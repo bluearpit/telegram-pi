@@ -7,18 +7,21 @@ import { PiHost } from "./pi.js";
 
 const exec = promisify(execFile);
 const PAGE_SIZE = 6;
-const HELP = `Pi on Telegram
-/sessions — browse Pi sessions from all projects
-/search query — search Pi history through Agent Recall
-/use ID — resume a listed session
-/new [absolute directory] — start a session
-/cwd absolute-directory — set directory for the next new session
-/model [provider/model] — browse or change available models
-/status — current Pi session, directory, model
-/cancel — stop the running turn
-/help — commands
-
-Send a text message to prompt Pi in the selected session. Only private chats from allowed users are accepted.`;
+// One source of truth for Telegram's slash menu and /help. setMyCommands
+// replaces any stale commands left on a bot token by a previous gateway.
+export const COMMANDS = [
+  { command: "start", description: "Get started with Pi", usage: "/start — get started" },
+  { command: "sessions", description: "Browse Pi sessions", usage: "/sessions — browse Pi sessions from all projects" },
+  { command: "search", description: "Search Pi history", usage: "/search query — search Pi history through Agent Recall" },
+  { command: "use", description: "Resume a Pi session", usage: "/use ID — resume a listed session" },
+  { command: "new", description: "Start a new Pi session", usage: "/new [absolute directory] — start a session" },
+  { command: "cwd", description: "Set directory for new sessions", usage: "/cwd absolute-directory — set directory for the next new session" },
+  { command: "model", description: "Browse or change Pi model", usage: "/model [provider/model] — browse or change available models" },
+  { command: "status", description: "Show current Pi session", usage: "/status — current Pi session, directory, model" },
+  { command: "cancel", description: "Stop the current Pi turn", usage: "/cancel — stop the running turn" },
+  { command: "help", description: "Show Pi commands", usage: "/help — commands" },
+] as const;
+const HELP = `Pi on Telegram\n${COMMANDS.map((item) => item.usage).join("\n")}\n\nSend a text message to prompt Pi in the selected session. Only private chats from allowed users are accepted.`;
 
 export function label(session: SessionInfo): string {
   const name = session.name || session.firstMessage || "Untitled";

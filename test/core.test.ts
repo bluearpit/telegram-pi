@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { directory, loadConfig } from "../src/config.js";
-import { chunks, label } from "../src/telegram.js";
+import { COMMANDS, chunks, label } from "../src/telegram.js";
 
 test("fails closed without numeric allowed user IDs or a token", () => {
   assert.throws(() => loadConfig({ TELEGRAM_BOT_TOKEN: "test:token" }), /TELEGRAM_ALLOWED_USERS/);
@@ -19,6 +19,12 @@ test("only absolute existing directories can be used for Pi", () => {
     assert.throws(() => directory("relative"), /absolute/);
     assert.throws(() => directory(join(cwd, "missing")));
   } finally { rmSync(cwd, { recursive: true }); }
+});
+
+test("Telegram menu only advertises supported Pi commands", () => {
+  const commands = COMMANDS.map(({ command }) => command);
+  assert.equal(new Set(commands).size, commands.length);
+  assert.deepEqual(commands, ["start", "sessions", "search", "use", "new", "cwd", "model", "status", "cancel", "help"]);
 });
 
 test("formats short Telegram labels and splits Unicode safely", () => {
