@@ -5,7 +5,7 @@ A small, single-user Telegram front end for [Pi](https://github.com/earendil-wor
 ## Requirements
 
 - Node.js 22+, a configured Pi installation with authenticated models, and a Telegram bot token from BotFather.
-- Optional: Agent Recall 0.2.4+ for `/search`. `/sessions` uses Pi's own catalog, not Agent Recall's index.
+- Optional: [Agent Recall](https://github.com/bluearpit/agentrecall) [v0.2.4 or newer](https://github.com/bluearpit/agentrecall/releases/tag/v0.2.4) for `/search`. Install the [`agentrecall-cli` package](https://pypi.org/project/agentrecall-cli/) with `uv tool install agentrecall-cli` and ensure `agentrecall` is on `PATH`. `/sessions` uses Pi's own catalog, not Agent Recall's index.
 - A **dedicated poller** per bot token. Stop any existing Hermes gateway using this token before starting this bot; do not run both at once.
 
 ## Start
