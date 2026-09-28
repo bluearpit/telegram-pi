@@ -1,0 +1,22 @@
+{
+  "name": "telegram-pi",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "A private Telegram front end for Pi coding-agent sessions",
+  "scripts": {
+    "start": "node --import tsx src/main.ts",
+    "check": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.87.1",
+    "grammy": "1.46.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  }
+}
