@@ -9,7 +9,7 @@ const bot = makeBot(config, pi);
 process.once("SIGINT", () => bot.stop());
 process.once("SIGTERM", () => bot.stop());
 try {
-  // This bot token must have exactly one poller; stop Hermes before starting.
+  // Telegram bot tokens must have exactly one active long poller.
   await bot.start({
     drop_pending_updates: true,
     onStart: (info) => console.info(`Polling Telegram as @${info.username}; Pi sessions remain in Pi`),
