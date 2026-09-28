@@ -1,5 +1,6 @@
 import { createAgentSession, SessionManager, type AgentSession, type SessionInfo } from "@earendil-works/pi-coding-agent";
 import { directory } from "./config.js";
+import { formatContext } from "./context.js";
 
 /** Pi alone owns transcripts and model state; the gateway holds only the selected handle. */
 export class PiHost {
@@ -13,6 +14,7 @@ export class PiHost {
   get preferredDirectory(): string { return this.preferredCwd; }
   get sessionFile(): string | undefined { return this.session?.sessionFile; }
   get model(): string { return this.session?.model ? `${this.session.model.provider}/${this.session.model.id}` : "not selected"; }
+  context(): string | undefined { return this.session ? formatContext(this.session) : undefined; }
 
   async list(): Promise<SessionInfo[]> {
     return (await SessionManager.listAll()).sort((a, b) => b.modified.getTime() - a.modified.getTime());

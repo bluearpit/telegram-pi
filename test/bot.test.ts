@@ -7,6 +7,7 @@ import type { PiHost } from "../src/pi.js";
 const fakePi = {
   cwd: "/tmp", preferredDirectory: "/tmp", sessionFile: undefined,
   model: "not selected", isBusy: false,
+  context: () => "Pi context: test snapshot",
 } as unknown as PiHost;
 
 function update(user: number, chatType: "private" | "group", text: string): Update {
@@ -31,4 +32,6 @@ test("only an allowlisted private user can reach Pi commands", async () => {
   await bot.handleUpdate(update(123, "private", "/status"));
   assert.equal(sent.length, 1);
   assert.match(sent[0], /Session: none/);
+  await bot.handleUpdate(update(123, "private", "/context"));
+  assert.equal(sent[1], "Pi context: test snapshot");
 });

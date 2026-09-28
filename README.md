@@ -26,6 +26,7 @@ See `.env.example`. `TELEGRAM_ALLOWED_USERS` is a required comma-separated list 
 - `/search <query>` — optional Pi-only Agent Recall history search; results are checked against Pi's catalog before selection.
 - `/new [absolute-directory]` — create a Pi session; `/cwd <absolute-directory>` chooses the directory for the *next* new session, without changing the active one.
 - `/model` — available authenticated models (first 20 shown); `/model provider/model-id` selects any available model.
+- `/context` — Pi's context usage and estimated category breakdown, including active compaction-summary tokens and compaction count. This is a Telegram-native view; the interactive Pi `/context` extension is not required.
 - `/status`, `/cancel`, `/help`; plain text prompts Pi. One turn at a time; Pi retains its normal transcript in `~/.pi/agent/sessions/`.
 
 The bot does not store a second transcript or copy Pi session files. A process restart drops the in-memory selection: use `/sessions` to select the session again. Pending Telegram updates are discarded on startup to avoid replaying old prompts with tool side effects. Stop the bot cleanly before updating it. Do **not** send turns from a Pi terminal and this bot into the *same session at the same time*: Pi's JSONL session file has no cross-process writer lock. This gateway is intended only for **trusted users**: Pi tools can execute code and change files as that OS user.

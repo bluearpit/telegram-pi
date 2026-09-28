@@ -18,6 +18,7 @@ export const COMMANDS = [
   { command: "cwd", description: "Set directory for new sessions", usage: "/cwd absolute-directory — set directory for the next new session" },
   { command: "model", description: "Browse or change Pi model", usage: "/model [provider/model] — browse or change available models" },
   { command: "status", description: "Show current Pi session", usage: "/status — current Pi session, directory, model" },
+  { command: "context", description: "Show Pi context usage", usage: "/context — context total, categories, and compaction summary" },
   { command: "cancel", description: "Stop the current Pi turn", usage: "/cancel — stop the running turn" },
   { command: "help", description: "Show Pi commands", usage: "/help — commands" },
 ] as const;
@@ -90,6 +91,7 @@ export function makeBot(config: Config, pi: PiHost): Bot {
     await reply(ctx, `Next new session will use ${pi.setCwd(ctx.match.trim())}. Current session is unchanged; use /new to start there.`);
   }));
   bot.command("status", (ctx) => reply(ctx, `Session: ${pi.sessionFile || "none (use /sessions or /new)"}\nDirectory: ${pi.cwd}\nNext new session: ${pi.preferredDirectory}\nModel: ${pi.model}\nBusy: ${pi.isBusy}`));
+  bot.command("context", (ctx) => reply(ctx, pi.context() || "No Pi session selected. Use /sessions or /new first."));
   bot.command("cancel", (ctx) => safe(ctx, async () => { await pi.abort(); await reply(ctx, "Stopped the current Pi turn (if any)."); }));
 
   bot.command("model", (ctx) => safe(ctx, async () => {
