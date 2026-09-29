@@ -93,8 +93,13 @@ export function makeBot(config: Config, pi: PiHost): Bot {
   bot.command("status", (ctx) => reply(ctx, `Session: ${pi.sessionFile || "none (use /sessions or /new)"}\nDirectory: ${pi.cwd}\nNext new session: ${pi.preferredDirectory}\nModel: ${pi.model}\nBusy: ${pi.isBusy}`));
   bot.command("context", (ctx) => reply(ctx, pi.context() || "No Pi session selected. Use /sessions or /new first."));
   bot.command("cancel", (ctx) => safe(ctx, async () => { await pi.abort(); await reply(ctx, "Stopped the current Pi turn (if any)."); }));
+  bot.callbackQuery(/^managed:([A-Za-z0-9._-]{1,32})$/, (ctx) => safe(ctx, async () => {
+    await ctx.answerCallbackQuery({ text: "Opening managed session" });
+    await pi.openManaged(ctx.match[1]);
+    await reply(ctx, `Opened managed session\nDirectory: ${pi.cwd}\nModel: ${pi.model}`);
+  }));
 
-  bot.command("model", (ctx) => safe(ctx, async () => {
+  bot.command("model",  (ctx) => safe(ctx, async () => {
     const choice = ctx.match.trim();
     if (choice) {
       const slash = choice.indexOf("/");

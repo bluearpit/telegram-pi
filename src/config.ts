@@ -6,6 +6,8 @@ export interface Config {
   token: string;
   allowedUsers: Set<number>;
   defaultCwd: string;
+  managedStateDir: string;
+  controlSocket: string;
   agentrecallBin: string;
 }
 
@@ -27,6 +29,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     token,
     allowedUsers: new Set(ids.map(Number)),
     defaultCwd: directory(env.PI_DEFAULT_CWD || homedir()),
+    managedStateDir: env.PI_MANAGED_STATE_DIR || `${homedir()}/.config/telegram-pi/managed-sessions`,
+    controlSocket: env.PI_CONTROL_SOCKET || `${homedir()}/.config/telegram-pi/control.sock`,
     agentrecallBin: env.AGENTRECALL_BIN || "agentrecall",
   };
 }
