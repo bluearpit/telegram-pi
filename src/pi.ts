@@ -5,6 +5,7 @@ import { createAgentSession, SessionManager, type AgentSession, type SessionInfo
 import { directory } from "./config.js";
 import type { ManagedSessionSpec } from "./control.js";
 import { formatContext } from "./context.js";
+import { selectPreferredModel } from "./model-selection.js";
 
 interface ManagedState extends ManagedSessionSpec {
   path: string;
@@ -42,14 +43,13 @@ export class PiHost {
     try { return await work(); } finally { this.busy = false; }
   }
 
-  private async applyModel(session: AgentSession, modelName?: string): Promise<void> {
-    if (!modelName) return;
-    const slash = modelName.indexOf("/");
-    if (slash < 1) throw new Error("Managed session model must use provider/model-id");
+  private async applyModel(session: AgentSession, preferenceOrder?: string[]): Promise<string | undefined> {
+    if (!preferenceOrder?.length) return undefined;
     const available = await session.modelRuntime.getAvailable();
-    const model = available.find((item) => item.provider === modelName.slice(0, slash) && item.id === modelName.slice(slash + 1));
-    if (!model) throw new Error(`Managed session model is unavailable: ${modelName}`);
+    const model = selectPreferredModel(preferenceOrder, available);
+    if (!model) throw new Error(`None of the managed session models are available: ${preferenceOrder.join(", ")}`);
     await session.setModel(model);
+    return `${model.provider}/${model.id}`;
   }
 
   private statePath(key: string): string { return join(this.managedStateDir, `${key}.json`); }
@@ -79,9 +79,17 @@ export class PiHost {
     const manager = state ? SessionManager.open(state.path, undefined, cwd) : SessionManager.create(cwd);
     const session = (await createAgentSession({ cwd, sessionManager: manager })).session;
     if (!state) session.sessionManager.appendSessionInfo(spec.name);
-    await this.applyModel(session, spec.model || state?.model);
+    const preferenceOrder = spec.modelPreferenceOrder
+      ?? state?.modelPreferenceOrder
+      ?? [spec.model || state?.model].filter((model): model is string => Boolean(model));
+    const selectedModel = await this.applyModel(session, preferenceOrder);
     this.managed.set(spec.key, session);
-    await this.saveState({ ...spec, cwd, model: spec.model || state?.model }, session);
+    await this.saveState({
+      ...spec,
+      cwd,
+      model: selectedModel || spec.model || state?.model,
+      modelPreferenceOrder: preferenceOrder,
+    }, session);
     return session;
   }
 

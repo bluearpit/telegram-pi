@@ -7,6 +7,7 @@ export interface ManagedSessionSpec {
   name: string;
   cwd: string;
   model?: string;
+  modelPreferenceOrder?: string[];
 }
 
 export interface SessionPromptRequest {
@@ -80,10 +81,27 @@ function parseRequest(line: string): SessionPromptRequest {
   if (typeof session.name !== "string" || !session.name.trim() || session.name.length > 80) throw new Error("Invalid managed session name");
   if (typeof session.cwd !== "string" || !session.cwd.startsWith("/")) throw new Error("Managed session cwd must be absolute");
   if (session.model !== undefined && (typeof session.model !== "string" || !/^[^/]+\/[^/]+$/.test(session.model))) throw new Error("Managed session model must use provider/model-id");
+  if (session.modelPreferenceOrder !== undefined) {
+    if (!Array.isArray(session.modelPreferenceOrder) || session.modelPreferenceOrder.length === 0 || session.modelPreferenceOrder.length > 8) {
+      throw new Error("Managed session modelPreferenceOrder must contain 1–8 models");
+    }
+    if (session.modelPreferenceOrder.some((model) => typeof model !== "string" || !/^[^/]+\/[^/]+$/.test(model))) {
+      throw new Error("Managed session modelPreferenceOrder entries must use provider/model-id");
+    }
+    if (new Set(session.modelPreferenceOrder).size !== session.modelPreferenceOrder.length) {
+      throw new Error("Managed session modelPreferenceOrder must not contain duplicates");
+    }
+  }
   if (request.prompt.length > 100_000) throw new Error("Session prompt is too large");
   return {
     type: "session_prompt",
-    session: { key: session.key as string, name: session.name as string, cwd: session.cwd as string, model: session.model },
+    session: {
+      key: session.key as string,
+      name: session.name as string,
+      cwd: session.cwd as string,
+      model: session.model as string | undefined,
+      modelPreferenceOrder: session.modelPreferenceOrder as string[] | undefined,
+    },
     prompt: request.prompt,
   };
 }

@@ -34,12 +34,36 @@ test("control socket accepts a valid managed-session prompt", async () => {
   try {
     assert.deepEqual(await request(socketPath, {
       type: "session_prompt",
-      session: { key: "daily-review", name: "Daily Review", cwd: directory, model: "provider/model-id" },
+      session: {
+        key: "daily-review",
+        name: "Daily Review",
+        cwd: directory,
+        modelPreferenceOrder: ["provider/primary", "provider/fallback"],
+      },
       prompt: "Review recent logs",
     }), { ok: true });
     await handled;
     assert.equal(received?.session.key, "daily-review");
+    assert.deepEqual(received?.session.modelPreferenceOrder, ["provider/primary", "provider/fallback"]);
     assert.equal(received?.prompt, "Review recent logs");
+  } finally {
+    await control.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("control socket rejects an invalid model preference order", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "telegram-pi-control-"));
+  const socketPath = join(directory, "control.sock");
+  const control = await startSessionControl(socketPath, async () => {});
+  try {
+    const response = await request(socketPath, {
+      type: "session_prompt",
+      session: { key: "review", name: "Review", cwd: directory, modelPreferenceOrder: ["not-a-model"] },
+      prompt: "Review recent logs",
+    }) as { ok: boolean; error?: string };
+    assert.equal(response.ok, false);
+    assert.match(response.error || "", /modelPreferenceOrder entries must use provider\/model-id/);
   } finally {
     await control.close();
     await rm(directory, { recursive: true, force: true });
