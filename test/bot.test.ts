@@ -8,6 +8,7 @@ const fakePi = {
   cwd: "/tmp", preferredDirectory: "/tmp", sessionFile: undefined,
   model: "not selected", isBusy: false,
   context: () => "Pi context: test snapshot",
+  openManaged: async () => {},
 } as unknown as PiHost;
 
 function update(user: number, chatType: "private" | "group", text: string): Update {
@@ -19,7 +20,10 @@ function update(user: number, chatType: "private" | "group", text: string): Upda
 }
 
 test("only an allowlisted private user can reach Pi commands", async () => {
-  const bot = makeBot({ token: "123:fake", allowedUsers: new Set([123]), defaultCwd: "/tmp", agentrecallBin: "agentrecall" }, fakePi);
+  const bot = makeBot({
+    token: "123:fake", allowedUsers: new Set([123]), defaultCwd: "/tmp",
+    managedStateDir: "/tmp/managed-sessions", controlSocket: "/tmp/control.sock", agentrecallBin: "agentrecall",
+  }, fakePi);
   bot.botInfo = { id: 900, is_bot: true, first_name: "test", username: "test_bot", can_join_groups: false, can_read_all_group_messages: false, supports_inline_queries: false } as typeof bot.botInfo;
   const sent: string[] = [];
   bot.api.config.use(async (_prev, method, payload) => {

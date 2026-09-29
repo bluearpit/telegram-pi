@@ -1,14 +1,30 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { createAgentSession, SessionManager, type AgentSession, type SessionInfo } from "@earendil-works/pi-coding-agent";
 import { directory } from "./config.js";
+import type { ManagedSessionSpec } from "./control.js";
 import { formatContext } from "./context.js";
 
-/** Pi alone owns transcripts and model state; the gateway holds only the selected handle. */
+interface ManagedState extends ManagedSessionSpec {
+  path: string;
+}
+
+export interface ManagedResult {
+  text: string;
+  sessionId: string;
+}
+
+/** Pi owns interactive sessions and generic externally-triggered managed sessions. */
 export class PiHost {
   private session?: AgentSession;
   private busy = false;
   private preferredCwd: string;
+  private readonly managed = new Map<string, AgentSession>();
+  private readonly managedBusy = new Set<string>();
 
-  constructor(cwd: string) { this.preferredCwd = cwd; }
+  constructor(private readonly managedStateDir: string, cwd: string) { this.preferredCwd = cwd; }
+
   get isBusy(): boolean { return this.busy; }
   get cwd(): string { return this.session?.sessionManager.getCwd() ?? this.preferredCwd; }
   get preferredDirectory(): string { return this.preferredCwd; }
@@ -26,6 +42,74 @@ export class PiHost {
     try { return await work(); } finally { this.busy = false; }
   }
 
+  private async applyModel(session: AgentSession, modelName?: string): Promise<void> {
+    if (!modelName) return;
+    const slash = modelName.indexOf("/");
+    if (slash < 1) throw new Error("Managed session model must use provider/model-id");
+    const available = await session.modelRuntime.getAvailable();
+    const model = available.find((item) => item.provider === modelName.slice(0, slash) && item.id === modelName.slice(slash + 1));
+    if (!model) throw new Error(`Managed session model is unavailable: ${modelName}`);
+    await session.setModel(model);
+  }
+
+  private statePath(key: string): string { return join(this.managedStateDir, `${key}.json`); }
+
+  private async loadState(key: string): Promise<ManagedState | undefined> {
+    try {
+      const state = JSON.parse(await readFile(this.statePath(key), "utf8")) as Partial<ManagedState>;
+      if (state.key !== key || typeof state.path !== "string" || !existsSync(state.path)) return undefined;
+      if (typeof state.name !== "string" || typeof state.cwd !== "string") return undefined;
+      return state as ManagedState;
+    } catch { return undefined; }
+  }
+
+  private async saveState(spec: ManagedSessionSpec, session: AgentSession): Promise<void> {
+    const path = session.sessionFile || session.sessionManager.getSessionFile();
+    if (!path) throw new Error("Managed session has no persistence path");
+    await mkdir(this.managedStateDir, { recursive: true, mode: 0o700 });
+    const state: ManagedState = { ...spec, cwd: session.sessionManager.getCwd(), path };
+    await writeFile(this.statePath(spec.key), JSON.stringify(state) + "\n", { mode: 0o600 });
+  }
+
+  private async ensureManaged(spec: ManagedSessionSpec): Promise<AgentSession> {
+    const current = this.managed.get(spec.key);
+    if (current) return current;
+    const state = await this.loadState(spec.key);
+    const cwd = directory(state?.cwd || spec.cwd);
+    const manager = state ? SessionManager.open(state.path, undefined, cwd) : SessionManager.create(cwd);
+    const session = (await createAgentSession({ cwd, sessionManager: manager })).session;
+    if (!state) session.sessionManager.appendSessionInfo(spec.name);
+    await this.applyModel(session, spec.model || state?.model);
+    this.managed.set(spec.key, session);
+    await this.saveState({ ...spec, cwd, model: spec.model || state?.model }, session);
+    return session;
+  }
+
+  async promptManaged(spec: ManagedSessionSpec, text: string): Promise<ManagedResult> {
+    if (this.managedBusy.has(spec.key)) throw new Error(`Managed session is already running: ${spec.name}`);
+    this.managedBusy.add(spec.key);
+    try {
+      const session = await this.ensureManaged(spec);
+      await session.prompt(text);
+      const last = [...session.messages].reverse().find((message) => message.role === "assistant");
+      if (last?.role === "assistant" && (last.stopReason === "error" || last.stopReason === "aborted")) {
+        throw new Error(`Pi stopped: ${last.errorMessage || last.stopReason}`);
+      }
+      return { text: session.getLastAssistantText() || "Pi finished without a text response.", sessionId: session.sessionManager.getSessionId() };
+    } finally { this.managedBusy.delete(spec.key); }
+  }
+
+  async openManaged(key: string): Promise<void> {
+    if (this.busy) throw new Error("Pi is busy; wait for the current operation");
+    if (this.managedBusy.has(key)) throw new Error("Managed session is running; wait for it to finish");
+    const state = await this.loadState(key);
+    if (!state) throw new Error(`Managed session not found: ${key}`);
+    const session = await this.ensureManaged(state);
+    if (this.session && this.session !== session && ![...this.managed.values()].includes(this.session)) this.session.dispose();
+    this.session = session;
+    this.preferredCwd = session.sessionManager.getCwd();
+  }
+
   setCwd(path: string): string {
     if (this.busy) throw new Error("Pi is busy");
     this.preferredCwd = directory(path);
@@ -36,7 +120,7 @@ export class PiHost {
     await this.exclusive(async () => {
       const cwd = directory(path);
       const { session } = await createAgentSession({ cwd, sessionManager: SessionManager.create(cwd) });
-      this.session?.dispose();
+      if (this.session && ![...this.managed.values()].includes(this.session)) this.session.dispose();
       this.session = session;
       this.preferredCwd = cwd;
     });
@@ -44,13 +128,17 @@ export class PiHost {
 
   async open(id: string): Promise<void> {
     await this.exclusive(async () => {
-      // Never trust paths/IDs from Telegram directly; resolve against Pi's catalog.
       const entry = (await this.list()).find((item) => item.id === id);
       if (!entry) throw new Error("Session not found in Pi's catalog");
+      const managedSession = [...this.managed.values()].find((item) => item.sessionManager.getSessionId() === id);
+      if (managedSession) {
+        this.session = managedSession;
+        this.preferredCwd = managedSession.sessionManager.getCwd();
+        return;
+      }
       const cwd = directory(entry.cwd || this.preferredCwd);
-      const manager = SessionManager.open(entry.path, undefined, cwd);
-      const { session } = await createAgentSession({ cwd, sessionManager: manager });
-      this.session?.dispose();
+      const session = (await createAgentSession({ cwd, sessionManager: SessionManager.open(entry.path, undefined, cwd) })).session;
+      if (this.session && ![...this.managed.values()].includes(this.session)) this.session.dispose();
       this.session = session;
       this.preferredCwd = cwd;
     });
@@ -79,13 +167,16 @@ export class PiHost {
       }
       await this.session.prompt(text);
       const last = [...this.session.messages].reverse().find((message) => message.role === "assistant");
-      if (last?.role === "assistant" && (last.stopReason === "error" || last.stopReason === "aborted")) {
-        throw new Error(`Pi stopped: ${last.errorMessage || last.stopReason}`);
-      }
+      if (last?.role === "assistant" && (last.stopReason === "error" || last.stopReason === "aborted")) throw new Error(`Pi stopped: ${last.errorMessage || last.stopReason}`);
       return this.session.getLastAssistantText() || "Pi finished without a text response.";
     });
   }
 
   async abort(): Promise<void> { await this.session?.abort(); }
-  dispose(): void { this.session?.dispose(); }
+  dispose(): void {
+    const sessions = new Set([this.session, ...this.managed.values()].filter((item): item is AgentSession => Boolean(item)));
+    for (const session of sessions) session.dispose();
+    this.session = undefined;
+    this.managed.clear();
+  }
 }
