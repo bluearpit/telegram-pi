@@ -1,0 +1,139 @@
+#!/usr/bin/env node
+import { execFileSync } from "node:child_process";
+import { existsSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const projectDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const label = process.env.TELEGRAM_PI_LAUNCHD_LABEL || "io.github.bluearpit.telegram-pi";
+const launchAgent = resolve(process.env.TELEGRAM_PI_LAUNCH_AGENT || join(homedir(), "Library/LaunchAgents", `${label}.plist`));
+const socketPath = process.env.PI_CONTROL_SOCKET || join(homedir(), ".config/telegram-pi/control.sock");
+const domain = `gui/${process.getuid()}`;
+const target = `${domain}/${label}`;
+
+function execute(command, args, options = {}) {
+  try {
+    const output = execFileSync(command, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...options });
+    return typeof output === "string" ? output.trim() : "";
+  } catch (error) {
+    const detail = error.stderr?.toString().trim() || error.message;
+    throw new Error(`${command} ${args.join(" ")} failed: ${detail}`, { cause: error });
+  }
+}
+
+function requireMacOS() {
+  if (process.platform !== "darwin") throw new Error("The telegram-pi LaunchAgent commands require macOS.");
+}
+
+function validateLaunchAgent() {
+  requireMacOS();
+  if (!existsSync(launchAgent)) throw new Error(`LaunchAgent plist not found: ${launchAgent}`);
+  const workingDirectory = execute("/usr/bin/plutil", ["-extract", "WorkingDirectory", "raw", "-o", "-", launchAgent]);
+  if (resolve(workingDirectory) !== projectDir) {
+    throw new Error(`LaunchAgent WorkingDirectory is ${workingDirectory}, expected ${projectDir}. Refusing to operate on a different checkout.`);
+  }
+}
+
+function isLoaded() {
+  try {
+    execute("/bin/launchctl", ["print", target]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function bootstrap() {
+  execute("/bin/launchctl", ["bootstrap", domain, launchAgent], { stdio: "inherit" });
+}
+
+function reportStatus() {
+  requireMacOS();
+  if (!existsSync(launchAgent)) throw new Error(`LaunchAgent plist not found: ${launchAgent}`);
+  if (isLoaded()) {
+    const output = execute("/bin/launchctl", ["print", target]);
+    const state = output.match(/^\s*state = (.+)$/m)?.[1] || "loaded";
+    const pid = output.match(/^\s*pid = (\d+)$/m)?.[1];
+    console.log(`LaunchAgent: ${state}${pid ? ` (pid ${pid})` : ""}`);
+  } else {
+    console.log("LaunchAgent: not loaded");
+  }
+
+  try {
+    const socket = statSync(socketPath);
+    if (!socket.isSocket()) {
+      console.log(`Control socket: path exists but is not a socket (${socketPath})`);
+      return;
+    }
+    const privateMode = (socket.mode & 0o077) === 0;
+    console.log(`Control socket: ${socketPath} (${privateMode ? "private" : "permissions too broad"})`);
+  } catch {
+    console.log(`Control socket: not present (${socketPath})`);
+  }
+}
+
+function verifyCleanMaster() {
+  const branch = execute("git", ["branch", "--show-current"], { cwd: projectDir });
+  if (branch !== "master") throw new Error(`Update requires the master branch (currently on ${branch || "detached HEAD"}).`);
+  const changes = execute("git", ["status", "--porcelain", "--untracked-files=all"], { cwd: projectDir });
+  if (changes) throw new Error("Update refused: the checkout has uncommitted or untracked files. Commit, stash, or remove them first.");
+}
+
+function update() {
+  validateLaunchAgent();
+  verifyCleanMaster();
+  execute("git", ["fetch", "origin", "master"], { cwd: projectDir, stdio: "inherit" });
+  const localOnly = Number(execute("git", ["rev-list", "--count", "origin/master..HEAD"], { cwd: projectDir }));
+  if (localOnly > 0) throw new Error(`Update refused: local master has ${localOnly} commit(s) not on origin/master.`);
+
+  const wasLoaded = isLoaded();
+  if (wasLoaded) execute("/bin/launchctl", ["bootout", target], { stdio: "inherit" });
+  try {
+    execute("git", ["merge", "--ff-only", "origin/master"], { cwd: projectDir, stdio: "inherit" });
+    execute("npm", ["ci"], { cwd: projectDir, stdio: "inherit" });
+    execute("npm", ["run", "check"], { cwd: projectDir, stdio: "inherit" });
+    execute("npm", ["test"], { cwd: projectDir, stdio: "inherit" });
+  } catch (error) {
+    if (wasLoaded) {
+      try { bootstrap(); }
+      catch (restartError) { console.error(`Could not restart the LaunchAgent after update failure: ${restartError.message}`); }
+    }
+    throw error;
+  }
+  if (wasLoaded) bootstrap();
+  console.log(`Updated telegram-pi to ${execute("git", ["rev-parse", "--short", "HEAD"], { cwd: projectDir })}.`);
+}
+
+function restart() {
+  validateLaunchAgent();
+  if (isLoaded()) execute("/bin/launchctl", ["kickstart", "-k", target], { stdio: "inherit" });
+  else bootstrap();
+  console.log("Restarted telegram-pi.");
+}
+
+function help() {
+  console.log(`Usage: telegram-pi <status|restart|update|help>
+
+  status   Show LaunchAgent and private control-socket status
+  restart  Restart the installed LaunchAgent
+  update   Fast-forward a clean master checkout, install, test, and restart
+  help     Show this help
+
+Environment overrides:
+  TELEGRAM_PI_LAUNCHD_LABEL  LaunchAgent label (default: ${label})
+  TELEGRAM_PI_LAUNCH_AGENT  LaunchAgent plist path (default: ${launchAgent})
+  PI_CONTROL_SOCKET         Control socket path (default: ${socketPath})`);
+}
+
+try {
+  const command = process.argv[2] || "help";
+  if (command === "status") reportStatus();
+  else if (command === "restart") restart();
+  else if (command === "update") update();
+  else if (command === "help" || command === "--help" || command === "-h") help();
+  else throw new Error(`Unknown command: ${command}. Run telegram-pi help.`);
+} catch (error) {
+  console.error(`telegram-pi: ${error instanceof Error ? error.message : String(error)}`);
+  process.exitCode = 1;
+}

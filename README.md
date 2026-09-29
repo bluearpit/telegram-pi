@@ -32,6 +32,20 @@ See `.env.example`. `TELEGRAM_ALLOWED_USERS` is a required comma-separated list 
 
 The bot does not store a second transcript or copy Pi session files. A process restart drops the in-memory selection: use `/sessions` to select the session again. Pending Telegram updates are discarded on startup to avoid replaying old prompts with tool side effects. Stop the bot cleanly before updating it. Do **not** send turns from a Pi terminal and this bot into the *same session at the same time*: Pi's JSONL session file has no cross-process writer lock. This gateway is intended only for **trusted users**: Pi tools can execute code and change files as that OS user.
 
+## Local LaunchAgent maintenance
+
+When installed as the macOS LaunchAgent `io.github.bluearpit.telegram-pi`, manage the running gateway from this checkout with:
+
+```bash
+./bin/telegram-pi status
+./bin/telegram-pi restart
+./bin/telegram-pi update
+```
+
+`update` is intentionally conservative: it requires a clean `master` checkout and a matching LaunchAgent `WorkingDirectory`, fetches and fast-forwards from `origin/master` only, then runs `npm ci`, type-checks and tests before restarting a previously loaded service. It refuses to overwrite local changes or local-only commits. `restart` uses `launchctl`; it does not start a second poller. The command supports `TELEGRAM_PI_LAUNCHD_LABEL`, `TELEGRAM_PI_LAUNCH_AGENT`, and `PI_CONTROL_SOCKET` overrides. It does not install the LaunchAgent plist; install it separately before using these commands.
+
+The project skill `.agents/skills/telegram-pi-maintenance/SKILL.md` guides agents through status, restart, and update requests using this CLI.
+
 ## Publishing and credentials
 
 The repository contains no bot token, Telegram user ID, or machine-specific path. Keep real credentials outside the checkout; never commit logs or Pi transcripts. For a macOS background service, run this command under your own LaunchAgent, using an absolute `node` executable and private env file. Stop it with `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/<label>.plist` before resuming another poller with the same token. Rotate the bot token if it is ever exposed. BotFather can rename the bot without changing its token; the token must still have only one active long poller.
