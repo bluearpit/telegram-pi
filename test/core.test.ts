@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { directory, loadConfig } from "../src/config.js";
 import { formatContext } from "../src/context.js";
+import { hasOnePermissionGate } from "../src/pi.js";
 import { COMMANDS, chunks, label } from "../src/telegram.js";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 
@@ -27,6 +28,14 @@ test("Telegram menu only advertises supported Pi commands", () => {
   const commands = COMMANDS.map(({ command }) => command);
   assert.equal(new Set(commands).size, commands.length);
   assert.deepEqual(commands, ["start", "sessions", "search", "use", "new", "cwd", "model", "status", "context", "cancel", "help"]);
+});
+
+test("gateway refuses missing or duplicate permission gates", () => {
+  const gated = { commands: new Map([["permissions", {}]]) };
+  const unrelated = { commands: new Map([["side", {}]]) };
+  assert.equal(hasOnePermissionGate([unrelated]), false);
+  assert.equal(hasOnePermissionGate([gated, unrelated]), true);
+  assert.equal(hasOnePermissionGate([gated, gated]), false);
 });
 
 test("context counts only active summaries but reports all compactions", () => {

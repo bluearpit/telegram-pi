@@ -5,6 +5,7 @@ A small, single-user Telegram front end for [Pi](https://github.com/earendil-wor
 ## Requirements
 
 - Node.js 22+, a configured Pi installation with authenticated models, and a Telegram bot token from BotFather.
+- Install [`pi-customizations`](https://github.com/bluearpit/pi-customizations) with its `/permissions` extension and provide Agent Recall's `~/.agents/permissions.yaml`. The gateway refuses to start a Pi session if the gate is absent or duplicated.
 - Optional: [Agent Recall](https://github.com/bluearpit/agentrecall) [v0.2.4 or newer](https://github.com/bluearpit/agentrecall/releases/tag/v0.2.4) for `/search`. Install the [`agentrecall-cli` package](https://pypi.org/project/agentrecall-cli/) with `uv tool install agentrecall-cli` and ensure `agentrecall` is on `PATH`. `/sessions` uses Pi's own catalog, not Agent Recall's index.
 - A **dedicated poller** per bot token. Stop any other process polling with this token before starting this bot; Telegram supports only one active long poller per token.
 
@@ -29,6 +30,8 @@ See `.env.example`. `TELEGRAM_ALLOWED_USERS` is a required comma-separated list 
 - `/context` — Pi's context usage and estimated category breakdown, including active compaction-summary tokens and compaction count. This is a Telegram-native view; the interactive Pi `/context` extension is not required.
 - `/status`, `/cancel`, `/help`; plain text prompts Pi. One turn at a time; Pi retains its normal transcript in `~/.pi/agent/sessions/`.
 - The optional local control socket accepts generic managed-session prompts. A caller supplies a session key, display name, working directory, prompt, and optionally a model or ordered `modelPreferenceOrder`; the gateway selects the first preference present in Pi's authenticated model catalog. The response is delivered to the allowlisted Telegram user with a button to open that managed session. This gateway does not know what the session is used for.
+
+**Telegram tool permissions:** The gateway selects Auto mode in its own process. Model tool calls do not prompt; commands explicitly listed in `deny_shell` in `~/.agents/permissions.yaml` remain blocked. If that YAML is missing or invalid, all model tool calls are blocked. There are no approval buttons yet. This is a policy check, not a sandbox: other processes, extension-internal actions, and shell indirection can still perform actions outside the gate. Keep the Telegram user allowlist private and run the gateway with only the files and credentials it needs.
 
 The bot does not store a second transcript or copy Pi session files. A process restart drops the in-memory selection: use `/sessions` to select the session again. Pending Telegram updates are discarded on startup to avoid replaying old prompts with tool side effects. Stop the bot cleanly before updating it. Do **not** send turns from a Pi terminal and this bot into the *same session at the same time*: Pi's JSONL session file has no cross-process writer lock. This gateway is intended only for **trusted users**: Pi tools can execute code and change files as that OS user.
 

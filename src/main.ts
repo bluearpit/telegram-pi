@@ -4,6 +4,11 @@ import { startSessionControl } from "./control.js";
 import { PiHost } from "./pi.js";
 import { chunks, COMMANDS, makeBot } from "./telegram.js";
 
+// Telegram cannot display Pi's terminal approval prompts. Opt this process into
+// Auto: model tool calls run without prompts, except explicit permissions.yaml denies.
+// This environment variable belongs only to the gateway process, not interactive Pi.
+process.env.PI_CUSTOMIZATIONS_PERMISSIONS_MODE = "auto";
+
 const config = loadConfig();
 const pi = new PiHost(config.managedStateDir, config.defaultCwd);
 const bot = makeBot(config, pi);

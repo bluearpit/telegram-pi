@@ -16,6 +16,10 @@ export interface ManagedResult {
   sessionId: string;
 }
 
+export function hasOnePermissionGate(extensions: Array<{ commands: { has(name: string): boolean } }>): boolean {
+  return extensions.filter((extension) => extension.commands.has("permissions")).length === 1;
+}
+
 /** Pi owns interactive sessions and generic externally-triggered managed sessions. */
 export class PiHost {
   private session?: AgentSession;
@@ -41,6 +45,17 @@ export class PiHost {
     if (this.busy) throw new Error("Pi is busy; wait for the current operation or use /cancel");
     this.busy = true;
     try { return await work(); } finally { this.busy = false; }
+  }
+
+  private async createSession(cwd: string, manager: SessionManager): Promise<AgentSession> {
+    const { session, extensionsResult } = await createAgentSession({ cwd, sessionManager: manager });
+    // The gateway has no approval UI. Never run a managed or interactive Telegram
+    // session without the packaged policy gate, even if extension loading failed.
+    if (!hasOnePermissionGate(extensionsResult.extensions)) {
+      session.dispose();
+      throw new Error("Pi permission gate is not installed exactly once; install pi-customizations before using Telegram");
+    }
+    return session;
   }
 
   private async applyModel(session: AgentSession, preferenceOrder?: string[]): Promise<string | undefined> {
@@ -77,7 +92,7 @@ export class PiHost {
     const state = await this.loadState(spec.key);
     const cwd = directory(state?.cwd || spec.cwd);
     const manager = state ? SessionManager.open(state.path, undefined, cwd) : SessionManager.create(cwd);
-    const session = (await createAgentSession({ cwd, sessionManager: manager })).session;
+    const session = await this.createSession(cwd, manager);
     if (!state) session.sessionManager.appendSessionInfo(spec.name);
     const preferenceOrder = spec.modelPreferenceOrder
       ?? state?.modelPreferenceOrder
@@ -127,7 +142,7 @@ export class PiHost {
   async newSession(path = this.preferredCwd): Promise<void> {
     await this.exclusive(async () => {
       const cwd = directory(path);
-      const { session } = await createAgentSession({ cwd, sessionManager: SessionManager.create(cwd) });
+      const session = await this.createSession(cwd, SessionManager.create(cwd));
       if (this.session && ![...this.managed.values()].includes(this.session)) this.session.dispose();
       this.session = session;
       this.preferredCwd = cwd;
@@ -145,7 +160,7 @@ export class PiHost {
         return;
       }
       const cwd = directory(entry.cwd || this.preferredCwd);
-      const session = (await createAgentSession({ cwd, sessionManager: SessionManager.open(entry.path, undefined, cwd) })).session;
+      const session = await this.createSession(cwd, SessionManager.open(entry.path, undefined, cwd));
       if (this.session && ![...this.managed.values()].includes(this.session)) this.session.dispose();
       this.session = session;
       this.preferredCwd = cwd;
@@ -171,7 +186,7 @@ export class PiHost {
     return this.exclusive(async () => {
       if (!this.session) {
         const cwd = directory(this.preferredCwd);
-        this.session = (await createAgentSession({ cwd, sessionManager: SessionManager.create(cwd) })).session;
+        this.session = await this.createSession(cwd, SessionManager.create(cwd));
       }
       await this.session.prompt(text);
       const last = [...this.session.messages].reverse().find((message) => message.role === "assistant");
