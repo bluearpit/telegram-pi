@@ -55,6 +55,14 @@ export class PiHost {
       session.dispose();
       throw new Error("Pi permission gate is not installed exactly once; install pi-customizations before using Telegram");
     }
+    try {
+      // SDK hosts must bind extensions themselves; this emits session_start so
+      // the permission gate loads permissions.yaml before the first tool call.
+      await session.bindExtensions({});
+    } catch (error) {
+      session.dispose();
+      throw error;
+    }
     return session;
   }
 

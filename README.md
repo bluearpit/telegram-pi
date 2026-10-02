@@ -5,7 +5,7 @@ A small, single-user Telegram front end for [Pi](https://github.com/earendil-wor
 ## Requirements
 
 - Node.js 22+, a configured Pi installation with authenticated models, and a Telegram bot token from BotFather.
-- Install [`pi-customizations`](https://github.com/bluearpit/pi-customizations) with its `/permissions` extension and provide Agent Recall's `~/.agents/permissions.yaml`. The gateway refuses to start a Pi session if the gate is absent or duplicated.
+- Install [`pi-customizations`](https://github.com/bluearpit/pi-customizations) with its `/permissions` extension and provide Agent Recall's `~/.agents/permissions.yaml`. The gateway refuses to start a Pi session if the gate is absent or duplicated, and binds SDK extensions before prompting so the gate reads its policy at session startup.
 - Optional: [Agent Recall](https://github.com/bluearpit/agentrecall) [v0.2.4 or newer](https://github.com/bluearpit/agentrecall/releases/tag/v0.2.4) for `/search`. Install the [`agentrecall-cli` package](https://pypi.org/project/agentrecall-cli/) with `uv tool install agentrecall-cli` and ensure `agentrecall` is on `PATH`. `/sessions` uses Pi's own catalog, not Agent Recall's index.
 - A **dedicated poller** per bot token. Stop any other process polling with this token before starting this bot; Telegram supports only one active long poller per token.
 
